@@ -4,91 +4,74 @@
 <link rel="manifest" href="manifest.json">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>現場マッパー Pro v1.4</title>
+    <title>現場マッパー Pro v1.7</title>
     
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#1e40af">
 
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    
     <script src="https://cdnjs.cloudflare.com/ajax/libs/exif-js/2.3.0/exif.js"></script>
-    
     <script src="https://cdn.tailwindcss.com"></script>
 
     <style>
-        #map { height: 55vh; width: 100%; z-index: 1; }
+        #map { height: 50vh; width: 100%; z-index: 1; border-radius: 1rem; }
         
-        /* 印刷用スタイル */
+        /* 印刷・PDF保存時の特別な設定 */
         @media print {
-            body { background: white !important; }
+            body { background: white !important; padding: 0 !important; }
             .no-print { display: none !important; }
-            #map { 
-                height: 500px !important; 
-                width: 100% !important; 
-                border: 1px solid #000;
-                overflow: visible !important;
-            }
-            .card { break-inside: avoid; border: 1px solid #ccc; margin-bottom: 10px; }
-            .leaflet-tile { opacity: 1 !important; }
+            #map { height: 450px !important; width: 100% !important; border: 1px solid #000 !important; }
+            .card { break-inside: avoid; border: 1px solid #eee; margin-top: 10px; page-break-inside: avoid; }
+            .leaflet-control-zoom, .leaflet-control-attribution { display: none !important; }
             
-            /* 【重要】印刷時でも背景色（ピンの青）を強制的に表示させる設定 */
+            /* ピンの色と文字をPDFでも強制表示 */
             .number-icon {
                 -webkit-print-color-adjust: exact !important;
                 print-color-adjust: exact !important;
                 background-color: #2563eb !important;
                 color: white !important;
+                display: flex !important;
+                align-items: center !important;
+                justify-content: center !important;
             }
         }
 
-        /* 番号付きピンのデザイン */
         .number-icon {
             background-color: #2563eb;
             border: 2px solid white;
             border-radius: 50%;
             color: white;
             font-weight: bold;
-            text-align: center;
-            line-height: 24px;
-            font-size: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.3);
         }
 
-        /* 地図切り替えボタンの配置 */
         .map-control {
-            position: absolute;
-            top: 10px;
-            right: 10px;
-            z-index: 1000;
-            background: white;
-            padding: 6px 10px;
-            border-radius: 8px;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
-            border: 1px solid #ddd;
+            position: absolute; top: 10px; right: 10px; z-index: 1000;
+            background: white; padding: 6px 10px; border-radius: 8px; border: 1px solid #ddd;
         }
     </style>
 </head>
-<body class="bg-slate-100 pb-10">
+<body class="bg-slate-100 pb-10 text-slate-900">
 
-    <header class="bg-blue-800 text-white p-4 shadow-md flex justify-between items-center">
-        <div>
-            <h1 class="text-lg font-bold italic">📍 現場マッパー Pro <span class="text-xs bg-blue-600 px-2 py-0.5 rounded">v1.4</span></h1>
-        </div>
+    <header class="bg-blue-800 text-white p-4 shadow-md flex justify-between items-center no-print">
+        <h1 class="text-lg font-bold italic">📍 現場マッパー v1.7</h1>
         <div class="flex gap-2">
-            <button onclick="clearData()" class="no-print bg-slate-600 hover:bg-slate-700 text-white px-3 py-1.5 rounded-full text-xs font-bold shadow transition active:scale-95">
-                クリア
-            </button>
-            <button onclick="window.print()" class="no-print bg-green-600 hover:bg-green-700 text-white px-4 py-1.5 rounded-full text-sm font-bold shadow-lg transition-all active:scale-95">
+            <button onclick="clearData()" class="bg-slate-600 text-white px-3 py-1.5 rounded-full text-xs font-bold shadow active:bg-slate-700">リセット</button>
+            <button onclick="window.print()" class="bg-green-600 hover:bg-green-700 text-white px-5 py-1.5 rounded-full text-sm font-bold shadow-lg transition active:scale-95">
                 PDF出力
             </button>
         </div>
     </header>
 
-    <main class="p-4 space-y-4">
+    <main class="p-2 sm:p-4 space-y-4">
         <div class="relative">
-            <div id="map" class="rounded-2xl shadow-xl border-4 border-white"></div>
-            <div class="map-control no-print">
-                <p class="text-[10px] font-bold text-gray-400 mb-1">地図表示切替</p>
+            <div id="map" class="shadow-xl border-4 border-white"></div>
+            <div class="map-control no-print shadow-md">
                 <select id="mapLayerSelect" class="text-sm font-bold outline-none bg-transparent cursor-pointer">
                     <option value="gsi_std">🗾 国土地理院 地形図</option>
                     <option value="gsi_sat">🛰️ 国土地理院 航空写真</option>
@@ -98,15 +81,13 @@
         </div>
 
         <div class="no-print bg-white p-4 rounded-xl shadow-md border-l-8 border-blue-600">
-            <label class="block mb-2 text-sm font-bold text-gray-700">【1】写真をアップロード（GPS付）</label>
-            <input type="file" id="photoInput" accept="image/*" multiple class="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-6 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer">
-            <p class="mt-2 text-[10px] text-gray-500">ℹ️ ピンを長押しドラッグで位置の微調整が可能です。</p>
+            <label class="block mb-2 text-sm font-bold text-gray-700">📷 現場写真を選択</label>
+            <input type="file" id="photoInput" accept="image/*" multiple class="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-6 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700">
+            <p class="mt-2 text-[10px] text-gray-400">※ピンをドラッグして位置を微調整できます</p>
         </div>
 
         <div id="photoList" class="space-y-4">
-            <h2 class="font-bold text-gray-700 border-b-2 border-blue-200 pb-1 flex items-center gap-2">
-                <span>📸 写真と現場メモ</span>
-            </h2>
+            <h2 class="font-bold text-gray-700 border-b-2 border-blue-200 pb-1 px-1">📸 記録一覧</h2>
         </div>
     </main>
 
@@ -117,14 +98,12 @@
 
         const map = L.map('map', { layers: [gsiStd] }).setView([35.6812, 139.7671], 5);
         const layers = { "gsi_std": gsiStd, "gsi_sat": gsiSat, "osm": osm };
-        let markers = []; // マーカー管理用配列
+        let photoCount = 0;
 
         document.getElementById('mapLayerSelect').addEventListener('change', function(e) {
             Object.values(layers).forEach(layer => map.removeLayer(layer));
             layers[e.target.value].addTo(map);
         });
-
-        let photoCount = 0;
 
         document.getElementById('photoInput').addEventListener('change', function(e) {
             const files = Array.from(e.target.files);
@@ -134,46 +113,38 @@
                     const lon = EXIF.getTag(this, "GPSLongitude");
                     const latRef = EXIF.getTag(this, "GPSLatitudeRef") || "N";
                     const lonRef = EXIF.getTag(this, "GPSLongitudeRef") || "E";
-
                     if (lat && lon) {
                         const dLat = (lat[0] + lat[1]/60 + lat[2]/3600) * (latRef === "N" ? 1 : -1);
                         const dLon = (lon[0] + lon[1]/60 + lon[2]/3600) * (lonRef === "E" ? 1 : -1);
                         photoCount++;
                         addRecord(dLat, dLon, photoCount, file);
                     } else {
-                        alert("位置情報がない写真が含まれています: " + file.name);
+                        alert("位置情報のない写真です: " + file.name);
                     }
                 });
             });
         });
 
         function addRecord(lat, lon, num, file) {
-            const icon = L.divIcon({
-                className: 'number-icon',
+            const icon = L.divIcon({ 
+                className: 'number-icon', 
                 html: num,
-                iconSize: [24, 24]
+                iconSize: [26, 26],
+                iconAnchor: [13, 13]
             });
-
-            const marker = L.marker([lat, lon], { icon: icon, draggable: true }).addTo(map);
-            markers.push(marker); // 配列に保存
-
-            marker.bindPopup(`<b>No.${num}</b><br>現場写真地点`);
+            L.marker([lat, lon], { icon: icon, draggable: true }).addTo(map);
             map.setView([lat, lon], 17);
 
             const reader = new FileReader();
             reader.onload = function(e) {
                 const list = document.getElementById('photoList');
                 const div = document.createElement('div');
-                div.className = "card bg-white p-4 rounded-xl shadow flex gap-4 items-start border border-gray-100";
+                div.className = "card bg-white p-4 rounded-xl shadow flex gap-4 items-start border";
                 div.innerHTML = `
                     <div class="bg-blue-600 text-white w-7 h-7 rounded-full flex-shrink-0 flex items-center justify-center font-bold text-sm shadow">${num}</div>
-                    <img src="${e.target.result}" class="w-32 h-32 object-cover rounded-lg shadow-md flex-shrink-0">
-                    <div class="flex-1 space-y-2">
-                        <textarea placeholder="メモを入力..." class="w-full border-b-2 border-slate-100 focus:border-blue-400 focus:outline-none text-sm h-20 resize-none p-2 bg-slate-50 rounded-lg transition-colors"></textarea>
-                        <div class="flex justify-between items-center text-[9px] text-gray-400 px-1">
-                            <span>${file.name}</span>
-                            <span>${lat.toFixed(5)}, ${lon.toFixed(5)}</span>
-                        </div>
+                    <img src="${e.target.result}" class="w-32 h-32 object-cover rounded-lg flex-shrink-0 border">
+                    <div class="flex-1">
+                        <textarea placeholder="現場メモを入力..." class="w-full border rounded text-sm h-24 p-2 bg-slate-50 focus:bg-white transition-colors"></textarea>
                     </div>
                 `;
                 list.appendChild(div);
@@ -181,24 +152,8 @@
             reader.readAsDataURL(file);
         }
 
-        // データをクリアする関数
         function clearData() {
-            if(confirm("全ての写真とデータをクリアしますか？")) {
-                // カウントリセット
-                photoCount = 0;
-                // マーカー全削除
-                markers.forEach(m => map.removeLayer(m));
-                markers = [];
-                // リスト削除
-                document.getElementById('photoList').innerHTML = '<h2 class="font-bold text-gray-700 border-b-2 border-blue-200 pb-1 flex items-center gap-2"><span>📸 写真と現場メモ</span></h2>';
-                // インプット値リセット
-                document.getElementById('photoInput').value = "";
-                alert("クリアしました。");
-            }
-        }
-
-        if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('sw.js');
+            if(confirm("全てのデータを消去してリセットしますか？")) location.reload();
         }
     </script>
 <script>
