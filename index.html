@@ -4,7 +4,7 @@
 <link rel="manifest" href="manifest.json">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>現場マッパー Pro v1.2</title>
+    <title>現場マッパー Pro v1.3</title>
     
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#1e40af">
@@ -17,7 +17,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
 
     <style>
-        #map { height: 50vh; width: 100%; z-index: 1; }
+        #map { height: 55vh; width: 100%; z-index: 1; }
         
         /* 印刷用スタイル */
         @media print {
@@ -53,74 +53,90 @@
             right: 10px;
             z-index: 1000;
             background: white;
-            padding: 4px 8px;
-            border-radius: 6px;
-            box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+            padding: 6px 10px;
+            border-radius: 8px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+            border: 1px solid #ddd;
         }
     </style>
 </head>
 <body class="bg-slate-100 pb-10">
 
     <header class="bg-blue-800 text-white p-4 shadow-md flex justify-between items-center">
-        <h1 class="text-lg font-bold">📍 現場マッパー Pro v1.2</h1>
-        <button onclick="window.print()" class="no-print bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-sm font-bold shadow transition">
+        <div>
+            <h1 class="text-lg font-bold italic">📍 現場マッパー Pro <span class="text-xs bg-blue-600 px-2 py-0.5 rounded">v1.3</span></h1>
+        </div>
+        <button onclick="window.print()" class="no-print bg-green-600 hover:bg-green-700 text-white px-4 py-1.5 rounded-full text-sm font-bold shadow-lg transition-all active:scale-95">
             PDF帳票を出力
         </button>
     </header>
 
     <main class="p-4 space-y-4">
         <div class="relative">
-            <div id="map" class="rounded-xl shadow-md border-2 border-white"></div>
+            <div id="map" class="rounded-2xl shadow-xl border-4 border-white"></div>
             <div class="map-control no-print">
+                <p class="text-[10px] font-bold text-gray-400 mb-1">地図表示切替</p>
                 <select id="mapLayerSelect" class="text-sm font-bold outline-none bg-transparent cursor-pointer">
-                    <option value="standard">🗺️ 標準地図</option>
-                    <option value="satellite">🛰️ 航空写真</option>
+                    <option value="gsi_std">🗾 国土地理院 地形図</option>
+                    <option value="gsi_sat">🛰️ 国土地理院 航空写真</option>
+                    <option value="osm">🌐 標準地図 (OSM)</option>
                 </select>
             </div>
         </div>
 
-        <div class="no-print bg-white p-4 rounded-xl shadow border-l-4 border-blue-600">
-            <label class="block mb-2 text-sm font-bold text-gray-700">【1】写真を追加（複数選択可）</label>
-            <input type="file" id="photoInput" accept="image/*" multiple class="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100">
-            <p class="mt-2 text-[10px] text-gray-400">※山間部などで位置がズレた場合は、ピンを直接ドラッグして直せます。</p>
+        <div class="no-print bg-white p-4 rounded-xl shadow-md border-l-8 border-blue-600">
+            <label class="block mb-2 text-sm font-bold text-gray-700">【1】写真をアップロード（GPS付）</label>
+            <input type="file" id="photoInput" accept="image/*" multiple class="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-6 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer">
+            <p class="mt-2 text-[10px] text-gray-500 flex items-center gap-1">
+                <span>ℹ️ ピンを長押しドラッグで位置の微調整が可能です。</span>
+            </p>
         </div>
 
-        <div id="photoList" class="space-y-3">
+        <div id="photoList" class="space-y-4">
             <h2 class="font-bold text-gray-700 border-b-2 border-blue-200 pb-1 flex items-center gap-2">
-                <span>【2】写真・メモ一覧</span>
+                <span>📸 写真と現場メモ</span>
             </h2>
             </div>
     </main>
 
     <script>
-        // 1. 地図レイヤーの準備
-        const stdLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '© OpenStreetMap'
+        // 1. 各地図レイヤーの設定
+        // 国土地理院 標準地図（地形図）
+        const gsiStd = L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png', {
+            attribution: '© 国土地理院'
         });
         
-        const satLayer = L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/{z}/{x}/{y}.jpg', {
+        // 国土地理院 航空写真
+        const gsiSat = L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/{z}/{x}/{y}.jpg', {
             attribution: '© 国土地理院'
         });
 
-        // 2. 地図の初期化
+        // OpenStreetMap
+        const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap'
+        });
+
+        // 2. 地図の初期化（地形図をデフォルトに設定）
         const map = L.map('map', {
-            layers: [stdLayer]
+            layers: [gsiStd]
         }).setView([35.6812, 139.7671], 5);
 
-        // レイヤー切り替え
+        // レイヤー切り替えロジック
+        const layers = {
+            "gsi_std": gsiStd,
+            "gsi_sat": gsiSat,
+            "osm": osm
+        };
+
         document.getElementById('mapLayerSelect').addEventListener('change', function(e) {
-            if (e.target.value === 'satellite') {
-                map.removeLayer(stdLayer);
-                satLayer.addTo(map);
-            } else {
-                map.removeLayer(satLayer);
-                stdLayer.addTo(map);
-            }
+            // 全レイヤーを一度消して、選ばれたものだけ追加
+            Object.values(layers).forEach(layer => map.removeLayer(layer));
+            layers[e.target.value].addTo(map);
         });
 
         let photoCount = 0;
 
-        // 3. 写真選択時の処理
+        // 3. 写真処理
         document.getElementById('photoInput').addEventListener('change', function(e) {
             const files = Array.from(e.target.files);
             files.forEach(file => {
@@ -136,42 +152,42 @@
                         photoCount++;
                         addRecord(dLat, dLon, photoCount, file);
                     } else {
-                        alert(file.name + " に位置情報が見つかりません。設定を確認してください。");
+                        alert("位置情報がない写真が含まれています: " + file.name);
                     }
                 });
             });
         });
 
-        // 4. ピンとリストを追加する関数
+        // 4. ピンとリスト表示
         function addRecord(lat, lon, num, file) {
-            // ピン（マーカー）の作成
             const icon = L.divIcon({
                 className: 'number-icon',
                 html: num,
                 iconSize: [24, 24]
             });
 
-            // ドラッグ可能(draggable: true)に設定
             const marker = L.marker([lat, lon], {
                 icon: icon,
                 draggable: true
             }).addTo(map);
 
-            marker.bindPopup(`<b>No.${num}</b><br>ドラッグで位置を修正できます`);
+            marker.bindPopup(`<b>No.${num}</b><br>現場写真地点`);
             map.setView([lat, lon], 17);
 
-            // リスト表示
             const reader = new FileReader();
             reader.onload = function(e) {
                 const list = document.getElementById('photoList');
                 const div = document.createElement('div');
-                div.className = "card bg-white p-3 rounded-lg shadow flex gap-3 items-start";
+                div.className = "card bg-white p-4 rounded-xl shadow flex gap-4 items-start border border-gray-100";
                 div.innerHTML = `
-                    <div class="bg-blue-600 text-white w-6 h-6 rounded-full flex-shrink-0 flex items-center justify-center font-bold text-xs">${num}</div>
-                    <img src="${e.target.result}" class="w-24 h-24 object-cover rounded shadow flex-shrink-0">
-                    <div class="flex-1">
-                        <textarea placeholder="メモを入力..." class="w-full border-b border-gray-200 focus:outline-none focus:border-blue-500 text-sm h-16 resize-none p-1 bg-slate-50 rounded" oninput="this.style.height = ''; this.style.height = this.scrollHeight + 'px'"></textarea>
-                        <p class="text-[10px] text-gray-400 mt-1">${file.name}</p>
+                    <div class="bg-blue-600 text-white w-7 h-7 rounded-full flex-shrink-0 flex items-center justify-center font-bold text-sm shadow">${num}</div>
+                    <img src="${e.target.result}" class="w-32 h-32 object-cover rounded-lg shadow-md flex-shrink-0">
+                    <div class="flex-1 space-y-2">
+                        <textarea placeholder="ここに現場の状況やメモを入力してください..." class="w-full border-b-2 border-slate-100 focus:border-blue-400 focus:outline-none text-sm h-20 resize-none p-2 bg-slate-50 rounded-lg transition-colors"></textarea>
+                        <div class="flex justify-between items-center text-[9px] text-gray-400 px-1">
+                            <span>ファイル名: ${file.name}</span>
+                            <span>座標: ${lat.toFixed(5)}, ${lon.toFixed(5)}</span>
+                        </div>
                     </div>
                 `;
                 list.appendChild(div);
@@ -179,7 +195,6 @@
             reader.readAsDataURL(file);
         }
 
-        // Service Workerの登録（PWA用）
         if ('serviceWorker' in navigator) {
             navigator.serviceWorker.register('sw.js');
         }
