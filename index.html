@@ -4,13 +4,21 @@
 <link rel="manifest" href="manifest.json">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>現場マッパー Pro v1.1</title>
+    <title>現場マッパー Pro v1.2</title>
+    
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#1e40af">
+
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
     <script src="https://cdnjs.cloudflare.com/ajax/libs/exif-js/2.3.0/exif.js"></script>
+    
     <script src="https://cdn.tailwindcss.com"></script>
+
     <style>
         #map { height: 50vh; width: 100%; z-index: 1; }
+        
         /* 印刷用スタイル */
         @media print {
             body { background: white !important; }
@@ -22,9 +30,10 @@
                 overflow: visible !important;
             }
             .card { break-inside: avoid; border: 1px solid #ccc; margin-bottom: 10px; }
-            /* 地図のタイルを強制表示させるおまじない */
             .leaflet-tile { opacity: 1 !important; }
         }
+
+        /* 番号付きピンのデザイン */
         .number-icon {
             background-color: #2563eb;
             border: 2px solid white;
@@ -34,40 +43,84 @@
             text-align: center;
             line-height: 24px;
             font-size: 12px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
+
+        /* 地図切り替えボタンの配置 */
+        .map-control {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            z-index: 1000;
+            background: white;
+            padding: 4px 8px;
+            border-radius: 6px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.3);
         }
     </style>
 </head>
 <body class="bg-slate-100 pb-10">
 
     <header class="bg-blue-800 text-white p-4 shadow-md flex justify-between items-center">
-        <h1 class="text-lg font-bold">📍 現場マッパー Pro</h1>
-        <button onclick="window.print()" class="no-print bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-sm font-bold shadow">
+        <h1 class="text-lg font-bold">📍 現場マッパー Pro v1.2</h1>
+        <button onclick="window.print()" class="no-print bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-sm font-bold shadow transition">
             PDF帳票を出力
         </button>
     </header>
 
     <main class="p-4 space-y-4">
-        <div id="map" class="rounded-xl shadow-md border-2 border-white"></div>
+        <div class="relative">
+            <div id="map" class="rounded-xl shadow-md border-2 border-white"></div>
+            <div class="map-control no-print">
+                <select id="mapLayerSelect" class="text-sm font-bold outline-none bg-transparent cursor-pointer">
+                    <option value="standard">🗺️ 標準地図</option>
+                    <option value="satellite">🛰️ 航空写真</option>
+                </select>
+            </div>
+        </div>
 
-        <div class="no-print bg-white p-4 rounded-xl shadow">
+        <div class="no-print bg-white p-4 rounded-xl shadow border-l-4 border-blue-600">
             <label class="block mb-2 text-sm font-bold text-gray-700">【1】写真を追加（複数選択可）</label>
-            <input type="file" id="photoInput" accept="image/*" multiple class="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700">
+            <input type="file" id="photoInput" accept="image/*" multiple class="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100">
+            <p class="mt-2 text-[10px] text-gray-400">※山間部などで位置がズレた場合は、ピンを直接ドラッグして直せます。</p>
         </div>
 
-        <div id="photoList" class="space-y-2">
-            <h2 class="font-bold text-gray-700 border-b pb-1">【2】写真・メモ一覧</h2>
-        </div>
+        <div id="photoList" class="space-y-3">
+            <h2 class="font-bold text-gray-700 border-b-2 border-blue-200 pb-1 flex items-center gap-2">
+                <span>【2】写真・メモ一覧</span>
+            </h2>
+            </div>
     </main>
 
     <script>
-        const map = L.map('map').setView([35.6812, 139.7671], 5);
-        // 印刷時にも背景が出るように設定
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        // 1. 地図レイヤーの準備
+        const stdLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '© OpenStreetMap'
-        }).addTo(map);
+        });
+        
+        const satLayer = L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/{z}/{x}/{y}.jpg', {
+            attribution: '© 国土地理院'
+        });
+
+        // 2. 地図の初期化
+        const map = L.map('map', {
+            layers: [stdLayer]
+        }).setView([35.6812, 139.7671], 5);
+
+        // レイヤー切り替え
+        document.getElementById('mapLayerSelect').addEventListener('change', function(e) {
+            if (e.target.value === 'satellite') {
+                map.removeLayer(stdLayer);
+                satLayer.addTo(map);
+            } else {
+                map.removeLayer(satLayer);
+                stdLayer.addTo(map);
+            }
+        });
 
         let photoCount = 0;
 
+        // 3. 写真選択時の処理
         document.getElementById('photoInput').addEventListener('change', function(e) {
             const files = Array.from(e.target.files);
             files.forEach(file => {
@@ -83,23 +136,31 @@
                         photoCount++;
                         addRecord(dLat, dLon, photoCount, file);
                     } else {
-                        alert(file.name + " に位置情報がありません");
+                        alert(file.name + " に位置情報が見つかりません。設定を確認してください。");
                     }
                 });
             });
         });
 
+        // 4. ピンとリストを追加する関数
         function addRecord(lat, lon, num, file) {
-            // 地図に番号付きのカスタムアイコンを表示
+            // ピン（マーカー）の作成
             const icon = L.divIcon({
                 className: 'number-icon',
                 html: num,
                 iconSize: [24, 24]
             });
-            L.marker([lat, lon], {icon: icon}).addTo(map);
+
+            // ドラッグ可能(draggable: true)に設定
+            const marker = L.marker([lat, lon], {
+                icon: icon,
+                draggable: true
+            }).addTo(map);
+
+            marker.bindPopup(`<b>No.${num}</b><br>ドラッグで位置を修正できます`);
             map.setView([lat, lon], 17);
 
-            // リスト追加
+            // リスト表示
             const reader = new FileReader();
             reader.onload = function(e) {
                 const list = document.getElementById('photoList');
@@ -109,13 +170,18 @@
                     <div class="bg-blue-600 text-white w-6 h-6 rounded-full flex-shrink-0 flex items-center justify-center font-bold text-xs">${num}</div>
                     <img src="${e.target.result}" class="w-24 h-24 object-cover rounded shadow flex-shrink-0">
                     <div class="flex-1">
-                        <textarea placeholder="メモを入力..." class="w-full border-b focus:outline-none focus:border-blue-500 text-sm h-16 resize-none p-1" oninput="this.style.height = ''; this.style.height = this.scrollHeight + 'px'"></textarea>
-                        <p class="text-[10px] text-gray-400 mt-1">${file.name} (Lat:${lat.toFixed(4)}, Lon:${lon.toFixed(4)})</p>
+                        <textarea placeholder="メモを入力..." class="w-full border-b border-gray-200 focus:outline-none focus:border-blue-500 text-sm h-16 resize-none p-1 bg-slate-50 rounded" oninput="this.style.height = ''; this.style.height = this.scrollHeight + 'px'"></textarea>
+                        <p class="text-[10px] text-gray-400 mt-1">${file.name}</p>
                     </div>
                 `;
                 list.appendChild(div);
             };
             reader.readAsDataURL(file);
+        }
+
+        // Service Workerの登録（PWA用）
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('sw.js');
         }
     </script>
 <script>
