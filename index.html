@@ -1,12 +1,11 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-<link rel="manifest" href="manifest.json">
+    <link rel="manifest" href="manifest.json">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>現場マッパー Pro v1.7</title>
+    <title id="pageTitle">現場マッパー Pro v1.8.2</title>
     
-    <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#1e40af">
 
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -16,16 +15,12 @@
 
     <style>
         #map { height: 50vh; width: 100%; z-index: 1; border-radius: 1rem; }
-        
-        /* 印刷・PDF保存時の特別な設定 */
         @media print {
             body { background: white !important; padding: 0 !important; }
             .no-print { display: none !important; }
             #map { height: 450px !important; width: 100% !important; border: 1px solid #000 !important; }
             .card { break-inside: avoid; border: 1px solid #eee; margin-top: 10px; page-break-inside: avoid; }
             .leaflet-control-zoom, .leaflet-control-attribution { display: none !important; }
-            
-            /* ピンの色と文字をPDFでも強制表示 */
             .number-icon {
                 -webkit-print-color-adjust: exact !important;
                 print-color-adjust: exact !important;
@@ -36,7 +31,6 @@
                 justify-content: center !important;
             }
         }
-
         .number-icon {
             background-color: #2563eb;
             border: 2px solid white;
@@ -49,7 +43,6 @@
             font-size: 14px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.3);
         }
-
         .map-control {
             position: absolute; top: 10px; right: 10px; z-index: 1000;
             background: white; padding: 6px 10px; border-radius: 8px; border: 1px solid #ddd;
@@ -59,16 +52,22 @@
 <body class="bg-slate-100 pb-10 text-slate-900">
 
     <header class="bg-blue-800 text-white p-4 shadow-md flex justify-between items-center no-print">
-        <h1 class="text-lg font-bold italic">📍 現場マッパー v1.7</h1>
+        <h1 class="text-lg font-bold italic">📍 現場マッパー v1.8.2</h1>
         <div class="flex gap-2">
-            <button onclick="clearData()" class="bg-slate-600 text-white px-3 py-1.5 rounded-full text-xs font-bold shadow active:bg-slate-700">リセット</button>
-            <button onclick="window.print()" class="bg-green-600 hover:bg-green-700 text-white px-5 py-1.5 rounded-full text-sm font-bold shadow-lg transition active:scale-95">
+            <button onclick="clearAllData()" class="bg-red-500 text-white px-3 py-1.5 rounded-full text-xs font-bold shadow active:bg-red-700">全データ消去</button>
+            <button onclick="exportToPDF()" class="bg-green-600 hover:bg-green-700 text-white px-5 py-1.5 rounded-full text-sm font-bold shadow-lg transition active:scale-95">
                 PDF出力
             </button>
         </div>
     </header>
 
     <main class="p-2 sm:p-4 space-y-4">
+        <div class="bg-white p-4 rounded-xl shadow-sm border-b-4 border-blue-400 no-print">
+            <label class="block text-[10px] font-bold text-gray-400 mb-1">PROJECT NAME / 現場名</label>
+            <input type="text" id="siteName" placeholder="現場名を入力（PDFファイル名になります）" 
+                class="w-full text-lg font-bold border-none focus:ring-0 p-0" oninput="saveMetaData()">
+        </div>
+
         <div class="relative">
             <div id="map" class="shadow-xl border-4 border-white"></div>
             <div class="map-control no-print shadow-md">
@@ -98,7 +97,19 @@
 
         const map = L.map('map', { layers: [gsiStd] }).setView([35.6812, 139.7671], 5);
         const layers = { "gsi_std": gsiStd, "gsi_sat": gsiSat, "osm": osm };
-        let photoCount = 0;
+        
+        let photoRecords = [];
+        try {
+            const savedData = localStorage.getItem('haru_mapper_data');
+            if(savedData) photoRecords = JSON.parse(savedData);
+        } catch(e) { console.error("Load error", e); }
+
+        window.onload = () => {
+            document.getElementById('siteName').value = localStorage.getItem('haru_site_name') || '';
+            photoRecords.forEach((rec, index) => {
+                addRecordToUI(rec.lat, rec.lon, index + 1, rec.img, rec.memo, false);
+            });
+        };
 
         document.getElementById('mapLayerSelect').addEventListener('change', function(e) {
             Object.values(layers).forEach(layer => map.removeLayer(layer));
@@ -108,52 +119,98 @@
         document.getElementById('photoInput').addEventListener('change', function(e) {
             const files = Array.from(e.target.files);
             files.forEach(file => {
-                EXIF.getData(file, function() {
-                    const lat = EXIF.getTag(this, "GPSLatitude");
-                    const lon = EXIF.getTag(this, "GPSLongitude");
-                    const latRef = EXIF.getTag(this, "GPSLatitudeRef") || "N";
-                    const lonRef = EXIF.getTag(this, "GPSLongitudeRef") || "E";
-                    if (lat && lon) {
-                        const dLat = (lat[0] + lat[1]/60 + lat[2]/3600) * (latRef === "N" ? 1 : -1);
-                        const dLon = (lon[0] + lon[1]/60 + lon[2]/3600) * (lonRef === "E" ? 1 : -1);
-                        photoCount++;
-                        addRecord(dLat, dLon, photoCount, file);
-                    } else {
-                        alert("位置情報のない写真です: " + file.name);
-                    }
-                });
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    const base64Img = event.target.result;
+                    // 画像のメタデータを解析
+                    const img = new Image();
+                    img.onload = function() {
+                        EXIF.getData(this, function() {
+                            const lat = EXIF.getTag(this, "GPSLatitude");
+                            const lon = EXIF.getTag(this, "GPSLongitude");
+                            const latRef = EXIF.getTag(this, "GPSLatitudeRef") || "N";
+                            const lonRef = EXIF.getTag(this, "GPSLongitudeRef") || "E";
+                            
+                            if (lat && lon) {
+                                const dLat = (lat[0] + lat[1]/60 + lat[2]/3600) * (latRef === "N" ? 1 : -1);
+                                const dLon = (lon[0] + lon[1]/60 + lon[2]/3600) * (lonRef === "E" ? 1 : -1);
+                                
+                                const newRec = { lat: dLat, lon: dLon, img: base64Img, memo: "" };
+                                photoRecords.push(newRec);
+                                addRecordToUI(dLat, dLon, photoRecords.length, base64Img, "", true);
+                                saveToStorage();
+                            } else {
+                                alert("位置情報のない写真です: " + file.name);
+                            }
+                        });
+                    };
+                    img.src = base64Img;
+                };
+                reader.readAsDataURL(file);
             });
         });
 
-        function addRecord(lat, lon, num, file) {
+        function addRecordToUI(lat, lon, num, imgSrc, memo, shouldZoom) {
+            // 1. 地図にピン（マーカー）を追加
             const icon = L.divIcon({ 
                 className: 'number-icon', 
                 html: num,
                 iconSize: [26, 26],
                 iconAnchor: [13, 13]
             });
-            L.marker([lat, lon], { icon: icon, draggable: true }).addTo(map);
-            map.setView([lat, lon], 17);
+            const marker = L.marker([lat, lon], { icon: icon, draggable: true }).addTo(map);
+            
+            marker.on('dragend', function(e) {
+                const newPos = e.target.getLatLng();
+                photoRecords[num-1].lat = newPos.lat;
+                photoRecords[num-1].lon = newPos.lng;
+                saveToStorage();
+            });
 
-            const reader = new FileReader();
-            reader.onload = function(e) {
-                const list = document.getElementById('photoList');
-                const div = document.createElement('div');
-                div.className = "card bg-white p-4 rounded-xl shadow flex gap-4 items-start border";
-                div.innerHTML = `
-                    <div class="bg-blue-600 text-white w-7 h-7 rounded-full flex-shrink-0 flex items-center justify-center font-bold text-sm shadow">${num}</div>
-                    <img src="${e.target.result}" class="w-32 h-32 object-cover rounded-lg flex-shrink-0 border">
-                    <div class="flex-1">
-                        <textarea placeholder="現場メモを入力..." class="w-full border rounded text-sm h-24 p-2 bg-slate-50 focus:bg-white transition-colors"></textarea>
-                    </div>
-                `;
-                list.appendChild(div);
-            };
-            reader.readAsDataURL(file);
+            if(shouldZoom) map.setView([lat, lon], 17);
+
+            // 2. 記録一覧にカードを追加
+            const list = document.getElementById('photoList');
+            const div = document.createElement('div');
+            div.className = "card bg-white p-4 rounded-xl shadow flex gap-4 items-start border";
+            div.innerHTML = `
+                <div class="bg-blue-600 text-white w-7 h-7 rounded-full flex-shrink-0 flex items-center justify-center font-bold text-sm shadow">${num}</div>
+                <img src="${imgSrc}" class="w-32 h-32 object-cover rounded-lg flex-shrink-0 border">
+                <div class="flex-1">
+                    <textarea oninput="updateMemo(${num-1}, this.value)" placeholder="現場メモを入力..." class="w-full border rounded text-sm h-24 p-2 bg-slate-50 focus:bg-white transition-colors">${memo}</textarea>
+                </div>
+            `;
+            list.appendChild(div);
         }
 
-        function clearData() {
-            if(confirm("全てのデータを消去してリセットしますか？")) location.reload();
+        function updateMemo(index, val) {
+            photoRecords[index].memo = val;
+            saveToStorage();
+        }
+
+        function saveMetaData() {
+            localStorage.setItem('haru_site_name', document.getElementById('siteName').value);
+        }
+
+        function saveToStorage() {
+            localStorage.setItem('haru_mapper_data', JSON.stringify(photoRecords));
+            saveMetaData();
+        }
+
+        function clearAllData() {
+            if(confirm("全ての記録と現場名を消去してリセットしますか？")) {
+                localStorage.removeItem('haru_mapper_data');
+                localStorage.removeItem('haru_site_name');
+                location.reload();
+            }
+        }
+
+        function exportToPDF() {
+            const siteName = document.getElementById('siteName').value || "現場マッパー_記録";
+            const originalTitle = document.title;
+            document.title = siteName;
+            window.print();
+            setTimeout(() => { document.title = originalTitle; }, 1000);
         }
     </script>
 <script>
